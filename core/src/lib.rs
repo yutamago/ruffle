@@ -66,6 +66,11 @@ pub use player::{Player, PlayerBuilder, PlayerMode, PlayerRuntime, StaticCallsta
 pub use ruffle_common::duration::FloatDuration;
 pub use ruffle_render::backend::ViewportDimensions;
 pub use swf;
+
+/// ffx-swf patch: `flash.utils.getTimer` reads the player's clock (the sum
+/// of the times given to `Player::tick`) instead of the wall clock.
+pub static DETERMINISTIC_GET_TIMER: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 pub use swf::Color;
 pub use ttf_parser;
 

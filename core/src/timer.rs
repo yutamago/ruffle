@@ -33,6 +33,12 @@ pub struct Timers<'gc> {
 }
 
 impl<'gc> Timers<'gc> {
+    /// ffx-swf patch: the timers' clock in milliseconds (the sum of the
+    /// `Player::tick` times), for a deterministic `getTimer`.
+    pub fn clock_millis(&self) -> u32 {
+        (self.cur_time as f64 / Self::TIMER_SCALE) as u32
+    }
+
     /// Ticks all timers and runs necessary callbacks.
     pub fn update_timers(context: &mut UpdateContext<'gc>, dt: FloatDuration) -> Option<f64> {
         context.timers.cur_time = context

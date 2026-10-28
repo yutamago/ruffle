@@ -67,6 +67,7 @@ fn main_fragment(in: filter__VertexOutput) -> @location(0) vec4<f32> {
     // The sum of every weight is full_size.
     let result = total / filter_args.full_size;
 
-    // This rounding imitates the fixed-point computations of FP, improving emulation accuracy.
-    return floor(result * 255.0) / 255.0;
+    // ffx-swf patch: no truncation. Iggy's GDraw sums its taps in floats and
+    // the 8-bit target rounds to nearest (Flash Player truncates: floor).
+    return result;
 }

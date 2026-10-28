@@ -690,13 +690,24 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
         };
 
         let texture_label = create_debug_label!("Bitmap");
+        // ffx-swf patch: GDRAW_MIPMAPS gives every bitmap a full mip chain
+        // (2x2 box averages, as Iggy's GDraw builds them), which the linear
+        // samplers' linear mipmap filter then blends: minified bitmaps (the
+        // game's 89-pixel glyph bitmaps drawn at a quarter size) no longer
+        // alias.
+        let mips = crate::GDRAW_MIPMAPS.load(std::sync::atomic::Ordering::Relaxed);
+        let mip_level_count = if mips {
+            32 - extent.width.max(extent.height).max(1).leading_zeros()
+        } else {
+            1
+        };
         let texture = self
             .descriptors
             .device
             .create_texture(&wgpu::TextureDescriptor {
                 label: texture_label.as_deref(),
                 size: extent,
-                mip_level_count: 1,
+                mip_level_count,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8Unorm,
@@ -722,6 +733,48 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
             },
             extent,
         );
+        if mip_level_count > 1 {
+            let (mut w, mut h) = (extent.width as usize, extent.height as usize);
+            let mut level = bitmap.data().to_vec();
+            for mip in 1..mip_level_count {
+                let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+                let mut next = vec![0u8; nw * nh * 4];
+                for y in 0..nh {
+                    for x in 0..nw {
+                        for c in 0..4 {
+                            let mut sum = 0u32;
+                            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                                let sx = (2 * x + dx).min(w - 1);
+                                let sy = (2 * y + dy).min(h - 1);
+                                sum += u32::from(level[(sy * w + sx) * 4 + c]);
+                            }
+                            next[(y * nw + x) * 4 + c] = ((sum + 2) / 4) as u8;
+                        }
+                    }
+                }
+                self.descriptors.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: mip,
+                        origin: Default::default(),
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &next,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * nw as u32),
+                        rows_per_image: None,
+                    },
+                    wgpu::Extent3d {
+                        width: nw as u32,
+                        height: nh as u32,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                level = next;
+                (w, h) = (nw, nh);
+            }
+        }
 
         let handle = BitmapHandle(Arc::new(Texture {
             view: texture.create_view(&Default::default()),

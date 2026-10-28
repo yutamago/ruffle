@@ -19,6 +19,16 @@ use std::cell::{Cell, OnceCell};
 use std::sync::Arc;
 use swf::GradientSpread;
 pub use wgpu;
+
+/// ffx-swf patch: draw every bitmap smoothed (bilinear), whatever the SWF's
+/// fill flag or `Bitmap.smoothing` says, as Iggy's GDraw does.
+pub static FORCE_BITMAP_SMOOTHING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// ffx-swf patch: give bitmaps a full mip chain at registration, as Iggy's
+/// GDraw does (sampled trilinear by the existing linear samplers).
+pub static GDRAW_MIPMAPS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 pub use wgpu_profiler;
 
 type Error = Box<dyn std::error::Error>;
@@ -276,6 +286,9 @@ impl Texture {
         handle: BitmapHandle,
         samplers: &BitmapSamplers,
     ) -> &BitmapBinds {
+        // ffx-swf patch: FORCE_BITMAP_SMOOTHING
+        let smoothed =
+            smoothed || FORCE_BITMAP_SMOOTHING.load(std::sync::atomic::Ordering::Relaxed);
         let bind = match (repeating, smoothed) {
             (true, true) => &self.repeating_linear,
             (true, false) => &self.repeating_nearest,

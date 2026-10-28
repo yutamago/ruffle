@@ -21,6 +21,12 @@ pub fn get_timer<'gc>(
     _this: Value<'gc>,
     _args: FunctionArgs<'_, 'gc>,
 ) -> Result<Value<'gc>, Error<'gc>> {
+    // ffx-swf patch: with DETERMINISTIC_GET_TIMER, the player's own clock
+    // (what Player::tick was given) instead of the wall clock, so a replay
+    // or a lockstep game sees the same times at the same frames.
+    if crate::DETERMINISTIC_GET_TIMER.load(std::sync::atomic::Ordering::Relaxed) {
+        return Ok(activation.context.timers.clock_millis().into());
+    }
     Ok((Instant::now()
         .duration_since(activation.context.start_time)
         .as_millis() as u32)
